@@ -3,7 +3,11 @@ unit FindUnit.DcuDecompiler;
 interface
 
 uses
-  Classes, FindUnit.Utils, Windows, ShellAPI;
+  Classes,
+  Windows,
+
+  FindUnit.Utils,
+  Winapi.ShellAPI;
 
 const
   DCU32INT_EXECUTABLE = 'dcu32int.exe';
@@ -12,7 +16,6 @@ type
   TDcuDecompiler = class(TObject)
   private
     FDir: string;
-    FFiles: TStringList;
     FExecutablePath: string;
 
     FGeneratedFiles: TStringList;
@@ -100,6 +103,7 @@ begin
   FileS.LoadFromFile(AFile);
   for I := FileS.Count -1 downto 0 do
   begin
+    DeleteLine := True;
     Line := Trim(FileS[i]);
     if Line = '' then
       DeleteLine := False;
@@ -190,17 +194,20 @@ begin
       ShellExecute(0, 'open', PChar(FExecutablePath), PChar(InputParams), nil, SW_HIDE);
     except
       on e: exception do
+      begin
         Logger.Error('TDcuDecompiler.ProcessFile[%s]: %s', [AFiles[i], E.Message]);
+        {$IFDEF RAISEMAD} raise; {$ENDIF}
+      end;
     end;
   end;
 
 end;
 
 procedure TDcuDecompiler.ProcessFilesInternal(AFiles: TStringList);
-var
-  I: Integer;
-  FileNameOut: string;
-  DeveSair: Boolean;
+//var
+//  I: Integer;
+//  FileNameOut: string;
+//  DeveSair: Boolean;
 begin
   {I'not using this method 'cause there are to much leaks on dcu32int that by now
   make it unusable on a single exe'}

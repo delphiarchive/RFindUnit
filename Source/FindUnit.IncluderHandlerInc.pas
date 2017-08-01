@@ -3,7 +3,11 @@ unit FindUnit.IncluderHandlerInc;
 interface
 
 uses
-  Classes, Generics.Collections, SimpleParser.Lexer.Types;
+  Classes,
+
+  Generics.Collections,
+
+  SimpleParser.Lexer.Types;
 
 type
   TIncItem = record
@@ -31,7 +35,10 @@ type
 implementation
 
 uses
-  FindUnit.Utils, SysUtils, Log4Pascal;
+  Log4Pascal,
+  SysUtils,
+
+  FindUnit.Utils;
 
 { TIncludeHandlerInc }
 
@@ -53,8 +60,8 @@ procedure TIncludeHandlerInc.GenerateIncList;
 var
   I: Integer;
   ItemPath: string;
-  Return: TStringList;
-  iRet: Integer;
+  Return: TDictionary<string, TFileInfo>;
+  iRet: TFileInfo;
   FileName: string;
   FilePath: string;
   IncItem: TIncItem;
@@ -67,10 +74,9 @@ begin
         Continue;
 
       Return := GetAllFilesFromPath(ItemPath, '*.inc');
-
-      for iRet := 0 to Return.Count -1 do
+      for iRet in Return.Values do
       begin
-        FilePath := Return[iRet];
+        FilePath := iRet.Path;
         FileName := UpperCase(ExtractFileName(FilePath));
 
         IncItem.Loaded := False;
@@ -82,7 +88,10 @@ begin
       Return.Free
     except
       on e: exception do
+      begin
         Logger.Error('TIncludeHandlerInc.GenerateIncList[%s]: %s', [ItemPath, e.Message]);
+        {$IFDEF RAISEMAD} raise; {$ENDIF}
+      end;
     end;
   end;
 end;

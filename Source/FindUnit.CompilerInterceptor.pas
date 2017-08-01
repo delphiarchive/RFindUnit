@@ -3,7 +3,10 @@ unit FindUnit.CompilerInterceptor;
 interface
 
 uses
-	ToolsAPI, FindUnit.EnvironmentController, SysUtils;
+  ToolsAPI,
+
+  FindUnit.EnvironmentController,
+  System.SysUtils;
 
 type
   TCompilerInterceptor = class(TNotifierObject, IOTANotifier, IOTAIDENotifier, IOTAIDENotifier50)
@@ -26,11 +29,12 @@ type
     CompilerInterceptor: TCompilerInterceptor;
 
   procedure Register;
+  procedure CompilerInterceptorUnRegister;
 
 implementation
 
 uses
-	FindUnit.Settings;
+  FindUnit.Settings;
 
 procedure Register;
 var
@@ -87,7 +91,7 @@ begin
   FEnvControl := Env;
 end;
 
-procedure UnRegister;
+procedure CompilerInterceptorUnRegister;
 var
   Services: IOTAServices;
 begin
@@ -98,6 +102,6 @@ end;
 initialization
 
 finalization
-  UnRegister;
+  CompilerInterceptorUnRegister;
 
 end.

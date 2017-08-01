@@ -3,22 +3,40 @@ unit FindUnit.SearchString;
 interface
 
 uses
-  Classes, FindUnit.PasParser, Generics.Collections, FindUnit.Header;
+  Classes,
+
+  FindUnit.Header,
+  FindUnit.PasParser,
+
+  Generics.Collections,
+
+  System.SyncObjs,
+
+  Log4Pascal,
+  System.Generics.Collections,
+  Interf.SearchStringCache;
 
 type
   TSearchString = class(TObject)
-  protected
-    FCandidates: TObjectList<TPasFile>;
+  private
+    FRcSearch: TCriticalSection;
+    FCandidates: TDictionary<string, TPasFile>;
+    FSearchStringCache: ISearchStringCache;
+    FMatchCache: ISearchStringCache;
 
     function FoundAllEntries(Entries: TStringList; const Text: string): Boolean;
 
     function GetMatcherOnItemListType(Item: TPasFile; SearchString: TStringList; List: TStringList; const Sufix: string; var ItensFound: integer): string;
     function GetMatchesOnItem(Item: TPasFile; SearchString: TStringList; var ItensFound: integer): string;
   public
-    constructor Create(Candidates: TObjectList<TPasFile>);
+    constructor Create(Candidates: TDictionary<string, TPasFile>);
     destructor Destroy; override;
 
     function GetMatch(const SearchString: string): TStringList;
+    function GetFullMatch(const SearchString: string): TStringList;
+
+    property FullMatchCache: ISearchStringCache read FSearchStringCache write FSearchStringCache;
+    property MatchCache: ISearchStringCache read FMatchCache write FMatchCache;
   end;
 
 implementation
@@ -28,13 +46,15 @@ uses
 
 { TSearchString }
 
-constructor TSearchString.Create(Candidates: TObjectList<TPasFile>);
+constructor TSearchString.Create(Candidates: TDictionary<string, TPasFile>);
 begin
   FCandidates := Candidates;
+  FRcSearch := TCriticalSection.Create;
 end;
 
 destructor TSearchString.Destroy;
 begin
+  FRcSearch.Destroy;
   inherited;
 end;
 
@@ -53,37 +73,88 @@ begin
   end;
 end;
 
-function TSearchString.GetMatch(const SearchString: string): TStringList;
+function TSearchString.GetFullMatch(const SearchString: string): TStringList;
 var
   I: Integer;
+  Line: string;
+  UpSS: string;
+  Local: TStringList;
+begin
+  if SearchString.IsEmpty then
+  begin
+    Result := TStringList.Create;
+    Exit;
+  end;
+
+  if Assigned(FSearchStringCache) and FSearchStringCache.GetMatch(SearchString, Result) then
+    Exit;
+
+  UpSS := SearchString.ToUpper;
+  Result := GetMatch('.' + SearchString + '.');
+  if Result.Count = 0 then
+    Result := GetMatch(SearchString);
+
+  for I := Result.Count - 1 downto 0 do
+  begin
+    Line := Result[I].ToUpper;
+
+    if Line.StartsWith(UpSS + '.')
+      or Line.Contains('.' + UpSS + '.')
+      or Line.Contains('.' + UpSS + ' -') then
+      Continue;
+
+    Result.Delete(I);
+  end;
+
+  if FSearchStringCache <> nil then
+  begin
+    Local := TStringList.Create;
+    Local.Text := Result.Text;
+    FSearchStringCache.AddItemOnCache(SearchString, Local);
+  end;
+end;
+
+function TSearchString.GetMatch(const SearchString: string): TStringList;
+var
   Item: TPasFile;
   ItensFound: Integer;
   SearchList: TStringList;
+  SearchKey: string;
 begin
-  ItensFound := 0;
   Result := TStringList.Create;
+  if SearchString.IsEmpty then
+    Exit;
 
-  SearchList := TStringList.Create;
+  SearchKey := UpperCase(SearchString);
+  if Assigned(FMatchCache) and (FMatchCache.GetMatch(SearchKey, Result)) then
+    Exit;
+
+  FRcSearch.Acquire;
   try
-    SearchList.Delimiter := ' ';
-    SearchList.DelimitedText := UpperCase(SearchString);
+    ItensFound := 0;
 
-    for I := 0 to FCandidates.Count - 1 do
-    begin
-      Item := FCandidates[I];
+    SearchList := TStringList.Create;
+    try
+      SearchList.Delimiter := ' ';
+      SearchList.DelimitedText := UpperCase(SearchString);
 
-      if FoundAllEntries(SearchList, UpperCase(Item.OriginUnitName) + '.') then
+      for Item in FCandidates.Values do
       begin
-        Result.Text := Result.Text + Item.OriginUnitName + '.* - Unit';
-        Inc(ItensFound);
-      end;
+        if FoundAllEntries(SearchList, UpperCase(Item.OriginUnitName) + '.') then
+        begin
+          Result.Text := Result.Text + Item.OriginUnitName + '.* - Unit';
+          Inc(ItensFound);
+        end;
 
-      Result.Text := Result.Text + GetMatchesOnItem(Item, SearchList, ItensFound);
-      if ItensFound >= MAX_RETURN_ITEMS then
-        Exit;
+        Result.Text := Result.Text + GetMatchesOnItem(Item, SearchList, ItensFound);
+        if ItensFound >= MAX_RETURN_ITEMS then
+          Exit;
+      end;
+    finally
+      SearchList.Free;
     end;
   finally
-    SearchList.Free;
+    FRcSearch.Release;
   end;
 end;
 
@@ -93,7 +164,6 @@ var
   iString: Integer;
   ItemToFind: string;
   MatchList: TStringList;
-  FoundAll: Boolean;
 begin
   MatchList := TStringList.Create;
   LocalSearchUpperCase := TStringList.Create;
@@ -123,7 +193,6 @@ function TSearchString.GetMatchesOnItem(Item: TPasFile; SearchString: TStringLis
 var
   ListType: TListType;
   List: TStringList;
-  I: TListType;
 begin
   Result := '';
   for ListType := Low(TListType) to High(TListType) do

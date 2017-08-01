@@ -16,7 +16,7 @@ type
 implementation
 
 uses
-	Classes, Messages;
+  Messages;
 
 var
   FFound: Boolean;
@@ -31,7 +31,7 @@ var
   Item: string;
 begin
   if FFound then
-    Exit;
+    Exit(False);
 
   Result := True;
   GetClassName(AHandle, Buffer, SizeOf(Buffer)-1);

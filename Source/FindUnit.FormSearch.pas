@@ -5,8 +5,10 @@ interface
 uses
   Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
   Dialogs, StdCtrls, ExtCtrls, ToolsAPI, Menus, SyncObjs,
-  FindUnit.EnvironmentController, StrUtils, AppEvnts, Buttons, ShellAPI, FindUnit.Header, FindUnit.FileEditor, Vcl.ImgList,
-  FindUnit.FormSettings, FindUnit.Settings;
+  FindUnit.EnvironmentController, StrUtils, AppEvnts,
+  Buttons, ShellAPI, FindUnit.Header, FindUnit.FileEditor, Vcl.ImgList,
+  FindUnit.FormSettings, FindUnit.Settings, System.ImageList,
+  Vcl.Clipbrd;
 
 type
   TFuncBoolean = function: Boolean of object;
@@ -52,6 +54,7 @@ type
     procedure btnProcessDCUsClick(Sender: TObject);
     procedure FormCreate(Sender: TObject);
     procedure btnConfigClick(Sender: TObject);
+    procedure lstResultClick(Sender: TObject);
   private
     FEnvControl: TEnvironmentController;
     FFileEditor: TSourceFileEditor;
@@ -71,10 +74,12 @@ type
     procedure SelectTheMostSelectableItem;
     procedure ProcessDCUFiles;
     function CanProcessDCUFiles: Boolean;
-    procedure ShowMessageToMuchResults(Show: Boolean);
+    procedure DisplayMessageToMuchResults(Show: Boolean);
 
     procedure LoadCurrentFile;
     procedure GetSelectedItem(out UnitName, ClassName: string);
+    procedure SaveFormSettings;
+    procedure ConfigureForm;
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
@@ -93,8 +98,11 @@ var
 implementation
 
 uses
-  FindUnit.OTAUtils, FindUnit.Utils, FindUnit.FormMessage, FindUnit.DcuDecompiler,
-  FindUnit.ResultsImportanceCalculator;
+  FindUnit.DcuDecompiler,
+  FindUnit.FormMessage,
+  FindUnit.OTAUtils,
+  FindUnit.ResultsImportanceCalculator,
+  FindUnit.Utils;
 
 {$R *.dfm}
 
@@ -107,6 +115,45 @@ var
   CONFIG_SearchOnProjectUnits: Boolean;
   CONFIG_SearchOnLibraryPath: Boolean;
 
+
+procedure TfrmFindUnit.SaveFormSettings;
+var
+  Settings: TSettings;
+begin
+  Settings := TSettings.Create;
+  try
+    Settings.SettingFormWidth := Self.Width;
+    Settings.SettingFormHeight := Self.Height;
+    Settings.SettingFormStartPosX := Self.Left;
+    Settings.SettingFormStartPosY := Self.Top;
+  finally
+    Settings.Free;
+  end;
+end;
+
+procedure TfrmFindUnit.ConfigureForm;
+var
+  Settings: TSettings;
+begin
+  Settings := TSettings.Create;
+  try
+    if Settings.SettingFormWidth > 0 then
+      Self.Width := Settings.SettingFormWidth;
+
+    if Settings.SettingFormHeight > 0 then
+      Self.Height := Settings.SettingFormHeight;
+
+    if Settings.SettingFormStartPosX > 0 then
+      Self.Left := Settings.SettingFormStartPosX;
+
+    if Settings.SettingFormStartPosY > 0 then
+      Self.Top := Settings.SettingFormStartPosY;
+  finally
+    Settings.Free;
+  end;
+end;
+
+
 procedure TfrmFindUnit.ShowTextOnScreen(Text: string);
 var
   MsgForm: TfrmMessage;
@@ -118,7 +165,7 @@ begin
   else
     Text := 'Unit ' + Text + ' added to implementation''s uses.';
 
-  MsgForm.ShowMessage(Text);
+  MsgForm.DisplayMessage(Text);
   SetFocus;
 end;
 
@@ -223,8 +270,13 @@ begin
     FEnvControl.LoadLibraryPath;
     CheckLibraryStatus;
   except
-  on E: exception do
-    MessageDlg('btnRefreshLibraryPathClick Error: ' + e.Message, mtError, [mbOK], 0);
+    on E: exception do
+    begin
+      MessageDlg('btnRefreshLibraryPathClick Error: ' + e.Message, mtError, [mbOK], 0);
+      {$IFDEF RAISEMAD}
+      raise;
+      {$ENDIF}
+    end;
   end;
 end;
 
@@ -235,7 +287,12 @@ begin
     CheckLibraryStatus;
   except
     on E: exception do
+    begin
       MessageDlg('btnRefreshProjectClick Error: ' + e.Message, mtError, [mbOK], 0);
+      {$IFDEF RAISEMAD}
+      raise;
+      {$ENDIF}
+    end;
   end;
 end;
 
@@ -307,7 +364,7 @@ begin
     Close;
 end;
 
-procedure TfrmFindUnit.ShowMessageToMuchResults(Show: Boolean);
+procedure TfrmFindUnit.DisplayMessageToMuchResults(Show: Boolean);
 begin
   pnlMsg.Visible := Show;
   lblMessage.Caption := '  There are to many results on your search, I''m not showing everything. Type a bigger search.' + #13#10 +
@@ -353,7 +410,7 @@ begin
     lstResult.Items.Text := ResultSearch.Text;
 
     SelectTheMostSelectableItem;
-    ShowMessageToMuchResults(ToMuchResults);
+    DisplayMessageToMuchResults(ToMuchResults);
     lstResult.Count
   finally
     ResultSearch.Free;
@@ -366,12 +423,14 @@ begin
   try
     FilterItem(edtSearch.Text);
   except
-    ShowMessage('FilterItemFromSearchString');
+//    Logger
+    raise
   end;
 end;
 
 procedure TfrmFindUnit.FormClose(Sender: TObject; var Action: TCloseAction);
 begin
+  SaveFormSettings;
   SaveConfigs;
   Action := caFree;
   frmFindUnit := nil;
@@ -380,6 +439,7 @@ end;
 procedure TfrmFindUnit.FormCreate(Sender: TObject);
 begin
   Caption := 'Find Uses - Version ' + VERSION_STR;
+  ConfigureForm;
 end;
 
 procedure TfrmFindUnit.FormShow(Sender: TObject);
@@ -392,24 +452,6 @@ end;
 procedure TfrmFindUnit.GetSelectedItem(out UnitName, ClassName: string);
 var
   I: Integer;
-
-  function CorrectUses(Item: string): string;
-  var
-    IsSetEnumItem: Boolean;
-  begin
-    IsSetEnumItem := Item.EndsWith(' item');
-
-    Result := Item;
-    Result := Trim(Fetch(Result, '-'));
-    Result := ReverseString(Result);
-    ClassName := Fetch(Result,'.');
-
-    if IsSetEnumItem then
-      ClassName := Fetch(Result,'.');
-
-    ClassName := ReverseString(ClassName);
-    Result := ReverseString(Result);
-  end;
 begin
   UnitName := '';
   if lstResult.Count = 0 then
@@ -419,12 +461,12 @@ begin
   begin
     if lstResult.Selected[i] then
     begin
-      UnitName := CorrectUses(lstResult.Items[i]);
+      GetUnitFromSearchSelection(lstResult.Items[i], UnitName, ClassName);
       Exit;
     end;
   end;
 
-  UnitName := CorrectUses(lstResult.Items[0])
+  GetUnitFromSearchSelection(lstResult.Items[0], UnitName, ClassName);
 end;
 
 procedure TfrmFindUnit.LoadConfigs;
@@ -440,6 +482,13 @@ begin
   CurEditor := OtaGetCurrentSourceEditor;
   FFileEditor := TSourceFileEditor.Create(CurEditor);
   FFileEditor.Prepare;
+end;
+
+procedure TfrmFindUnit.lstResultClick(Sender: TObject);
+begin
+  {$IFDEF DEBUG}
+  Clipboard.AsText := lstResult.Items.Text;
+  {$ENDIF}
 end;
 
 procedure TfrmFindUnit.lstResultDblClick(Sender: TObject);

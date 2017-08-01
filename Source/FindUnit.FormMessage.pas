@@ -3,8 +3,18 @@ unit FindUnit.FormMessage;
 interface
 
 uses
-  Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
-  Dialogs, Types, TransparentCanvas, ExtCtrls;
+  Classes,
+  Controls,
+  Dialogs,
+  ExtCtrls,
+  Forms,
+  Graphics,
+  Messages,
+  SysUtils,
+  TransparentCanvas,
+  Types,
+  Variants,
+  Windows;
 
 type
   TfrmMessage = class(TForm)
@@ -25,7 +35,7 @@ type
 
     procedure SetPosition;
   public
-    procedure ShowMessage(const Text: string);
+    procedure DisplayMessage(const Text: string);
 
     class procedure ShowInfoToUser(const Text: string);
   end;
@@ -33,7 +43,9 @@ type
 implementation
 
 uses
-  FindUnit.DelphiVlcWrapper, Log4Pascal;
+  Log4Pascal,
+
+  FindUnit.DelphiVlcWrapper;
 
 const
   MARGIN_PADING = 5;
@@ -79,10 +91,10 @@ var
   MsgForm: TfrmMessage;
 begin
   MsgForm := TfrmMessage.Create(nil);
-  MsgForm.ShowMessage(Text);
+  MsgForm.DisplayMessage(Text);
 end;
 
-procedure TfrmMessage.ShowMessage(const Text: string);
+procedure TfrmMessage.DisplayMessage(const Text: string);
 begin
   FTexto := Text;
   SetPosition;
@@ -157,7 +169,10 @@ begin
     end;
   except
     on e: exception do
+    begin
       Logger.Error('TfrmMessage.PrintOnCanvas: %s', [E.Message]);
+      {$IFDEF RAISEMAD} raise; {$ENDIF}
+    end;
   end;
 end;
 

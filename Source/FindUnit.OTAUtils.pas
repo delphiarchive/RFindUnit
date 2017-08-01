@@ -3,7 +3,13 @@
 interface
 
 uses
-  ToolsAPI, FindUnit.Header, Classes;
+  Classes,
+  ToolsAPI,
+  IOUtils,
+
+  FindUnit.Header,
+  FindUnit.Utils,
+  System.Generics.Collections;
 
 function GetVolumeLabel(const DriveChar: string): string;
 function BrowseURL(const URL: string): boolean;
@@ -22,9 +28,9 @@ function GetSelectedTextFromContext(Context: IOTAKeyContext): TStringPosition;
 function GetErrorListFromActiveModule: TOTAErrors;
 procedure GetLibraryPath(Paths: TStrings; PlatformName: string);
 
-function GetAllFilesFromProjectGroup: TStringList;
+function GetAllFilesFromProjectGroup: TDictionary<string, TFileInfo>;
 
-function GetWordAtCursor: TStringPosition;
+function GetWordAtCursor(DeltaCharPosition: Integer = 0): TStringPosition;
 
 var
   PathUserDir: string;
@@ -32,8 +38,13 @@ var
 implementation
 
 uses
-  Windows, ShellAPI, ShlObj, ActiveX, SysUtils, DCCStrs, Registry,
-  FindUnit.Utils;
+  ActiveX,
+  DCCStrs,
+  Registry,
+  ShellAPI,
+  ShlObj,
+  SysUtils,
+  Windows;
 
 function SourceEditor(Module: IOTAMOdule): IOTASourceEditor;
 var
@@ -71,7 +82,7 @@ begin
   Result := ModuleErrors.GetErrors(ActiveSourceEditor.FileName);
 end;
 
-function GetAllFilesFromProjectGroup: TStringList;
+function GetAllFilesFromProjectGroup: TDictionary<string, TFileInfo>;
 var
   ModServices: IOTAModuleServices;
   Module: IOTAMOdule;
@@ -81,10 +92,9 @@ var
   iProj: Integer;
   CurProject: IOTAProject;
   iFile: Integer;
+  FileInfo: TFileInfo;
 begin
-  Result := TStringList.Create;
-  Result.Sorted := True;
-  Result.Duplicates := dupIgnore;
+  Result := TDictionary<string, TFileInfo>.Create;
 
   ModServices := BorlandIDEServices as IOTAModuleServices;
   for iMod := 0 to ModServices.ModuleCount - 1 do
@@ -100,7 +110,13 @@ begin
           FileDesc := CurProject.GetModule(iFile).FileName;
           if FileDesc = '' then
             Continue;
-          Result.Add(FileDesc);
+
+          FileInfo.Path := FileDesc;
+          if FileExists(FileDesc) then
+            FileInfo.LastAccess := IOUtils.TFile.GetLastWriteTime(FileDesc)
+          else
+            FileInfo.LastAccess := 0;
+          Result.AddOrSetValue(FileInfo.Path, FileInfo);
         end;
       end;
     end;
@@ -155,7 +171,7 @@ begin
   end;
 end;
 
-function GetWordAtCursor: TStringPosition;
+function GetWordAtCursor(DeltaCharPosition: Integer): TStringPosition;
 const
   strIdentChars = ['a' .. 'z', 'A' .. 'Z', '_', '0' .. '9'];
 var
@@ -165,41 +181,50 @@ var
   Content: TStringList;
   ContentTxt: string;
 begin
-  ContentTxt := '';
-  SourceEditor := ActiveSourceEditor;
-  EditPos := SourceEditor.EditViews[0].CursorPos;
-  Content := TStringList.Create;
   try
-    Content.Text := EditorAsString(SourceEditor);
-    ContentTxt := Content[Pred(EditPos.Line)];
-    iPosition := EditPos.Col;
-    if (iPosition > 0) And (Length(ContentTxt) >= iPosition) and CharInSet(ContentTxt[iPosition], strIdentChars) then
-    begin
-      while (iPosition > 1) And (CharInSet(ContentTxt[Pred(iPosition)], strIdentChars)) do
-        Dec(iPosition);
-      Delete(ContentTxt, 1, Pred(iPosition));
-      iPosition := 1;
-      while CharInSet(ContentTxt[iPosition], strIdentChars) do
-        Inc(iPosition);
-      Delete(ContentTxt, iPosition, Length(ContentTxt) - iPosition + 1);
-      if CharInSet(ContentTxt[1], ['0' .. '9']) then
+    ContentTxt := '';
+    SourceEditor := ActiveSourceEditor;
+    EditPos := SourceEditor.EditViews[0].CursorPos;
+    Content := TStringList.Create;
+    try
+      Content.Text := EditorAsString(SourceEditor);
+      ContentTxt := Content[Pred(EditPos.Line)];
+      iPosition := EditPos.Col + DeltaCharPosition;
+      if (iPosition > 0) And (Length(ContentTxt) >= iPosition) and CharInSet(ContentTxt[iPosition], strIdentChars) then
+      begin
+        while (iPosition > 1) And (CharInSet(ContentTxt[Pred(iPosition)], strIdentChars)) do
+          Dec(iPosition);
+        Delete(ContentTxt, 1, Pred(iPosition));
+        iPosition := 1;
+        while CharInSet(ContentTxt[iPosition], strIdentChars) do
+          Inc(iPosition);
+        Delete(ContentTxt, iPosition, Length(ContentTxt) - iPosition + 1);
+        if CharInSet(ContentTxt[1], ['0' .. '9']) then
+          ContentTxt := '';
+      end
+      else
         ContentTxt := '';
-    end
-    else
-      ContentTxt := '';
 
-    Result.Value := ContentTxt;
-    Result.Line := EditPos.Line;
-  finally
-    Content.Free;
+      Result.Value := ContentTxt;
+      Result.Line := EditPos.Line;
+    finally
+      Content.Free;
+    end;
+  except
+    on E: exception do
+    begin
+      Result.Value := '';
+      Result.Line := -1;
+    end;
   end;
-End;
+
+  if (DeltaCharPosition = 0) and (Result.Value = '') then
+    Result := GetWordAtCursor(-1);
+end;
 
 function GetSelectedTextFromContext(Context: IOTAKeyContext): TStringPosition;
 var
   Editor: IOTAEditBuffer;
-  EdtPosition: IOTAEditPosition;
-  EditPos: TOTAEditPos;
   CurSourceEditor: IOTASourceEditor;
 begin
   CurSourceEditor := ActiveSourceEditor;
@@ -290,7 +315,6 @@ end;
 function OtaGetCurrentSourceEditor: IOTASourceEditor;
 var
   LEditorServices: IOTAEditorServices;
-  LFileName: string;
   LEditBuffer: IOTAEditBuffer;
 begin
   Result := nil;

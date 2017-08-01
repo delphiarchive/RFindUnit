@@ -33,6 +33,9 @@ object frmFindUnit: TfrmFindUnit
     Align = alBottom
     Caption = 'Options'
     TabOrder = 2
+    DesignSize = (
+      580
+      94)
     object lblProjectUnitsStatus: TLabel
       Left = 193
       Top = 23
@@ -62,7 +65,6 @@ object frmFindUnit: TfrmFindUnit
       Width = 54
       Height = 22
       Caption = 'Re&fresh'
-      Visible = False
       OnClick = btnRefreshLibraryPathClick
     end
     object btnProcessDCUs: TSpeedButton
@@ -101,6 +103,7 @@ object frmFindUnit: TfrmFindUnit
       Width = 22
       Height = 22
       Hint = 'Configure'
+      Anchors = [akTop, akRight]
       ImageIndex = 0
       Images = ilImages
       TabOrder = 2
@@ -123,6 +126,7 @@ object frmFindUnit: TfrmFindUnit
       Align = alClient
       ItemHeight = 13
       TabOrder = 0
+      OnClick = lstResultClick
       OnDblClick = lstResultDblClick
     end
     object pnlMsg: TPanel
@@ -161,6 +165,9 @@ object frmFindUnit: TfrmFindUnit
     Align = alTop
     Caption = 'Search'
     TabOrder = 0
+    DesignSize = (
+      580
+      73)
     object lblWhere: TLabel
       Left = 16
       Top = 46
@@ -202,6 +209,7 @@ object frmFindUnit: TfrmFindUnit
       Top = 24
       Width = 85
       Height = 25
+      Anchors = [akTop, akRight]
       Caption = '&Add'
       TabOrder = 1
       OnClick = btnAddClick

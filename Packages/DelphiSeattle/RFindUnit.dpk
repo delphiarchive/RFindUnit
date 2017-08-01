@@ -1,7 +1,6 @@
 ﻿package RFindUnit;
 
 {$R *.res}
-{$R *.otares}
 {$IFDEF IMPLICITBUILDING This IFDEF should not be used by users}
 {$ALIGN 8}
 {$ASSERTIONS ON}
@@ -54,36 +53,10 @@ contains
   DelphiAST in '..\..\Thirdy\DelphiAST\DelphiAST.pas',
   DelphiAST.Writer in '..\..\Thirdy\DelphiAST\DelphiAST.Writer.pas',
   Log4Pascal in '..\..\Thirdy\Log4pascal\Log4Pascal.pas',
-  OtlCollectionsFU in '..\..\Thirdy\OmniThreadLibrary\OtlCollectionsFU.pas',
-  OtlCommBufferTestFU in '..\..\Thirdy\OmniThreadLibrary\OtlCommBufferTestFU.pas',
-  OtlCommFU in '..\..\Thirdy\OmniThreadLibrary\OtlCommFU.pas',
-  OtlCommon.UtilsFU in '..\..\Thirdy\OmniThreadLibrary\OtlCommon.UtilsFU.pas',
-  OtlCommonFU in '..\..\Thirdy\OmniThreadLibrary\OtlCommonFU.pas',
-  OtlContainerObserverFU in '..\..\Thirdy\OmniThreadLibrary\OtlContainerObserverFU.pas',
-  OtlContainersFU in '..\..\Thirdy\OmniThreadLibrary\OtlContainersFU.pas',
-  OtlDataManagerFU in '..\..\Thirdy\OmniThreadLibrary\OtlDataManagerFU.pas',
-  OtlEventMonitorFU in '..\..\Thirdy\OmniThreadLibrary\OtlEventMonitorFU.pas',
-  OtlHooksFU in '..\..\Thirdy\OmniThreadLibrary\OtlHooksFU.pas',
-  OtlLoggerFU in '..\..\Thirdy\OmniThreadLibrary\OtlLoggerFU.pas',
-  OtlParallelFU in '..\..\Thirdy\OmniThreadLibrary\OtlParallelFU.pas',
-  OtlSuperObjectFU in '..\..\Thirdy\OmniThreadLibrary\OtlSuperObjectFU.pas',
-  OtlSyncFU in '..\..\Thirdy\OmniThreadLibrary\OtlSyncFU.pas',
-  OtlTaskControlFU in '..\..\Thirdy\OmniThreadLibrary\OtlTaskControlFU.pas',
-  OtlTaskFU in '..\..\Thirdy\OmniThreadLibrary\OtlTaskFU.pas',
-  OtlThreadPoolFU in '..\..\Thirdy\OmniThreadLibrary\OtlThreadPoolFU.pas',
   SimpleParser.Lexer in '..\..\Thirdy\DelphiAST\SimpleParser\SimpleParser.Lexer.pas',
   SimpleParser.Lexer.Types in '..\..\Thirdy\DelphiAST\SimpleParser\SimpleParser.Lexer.Types.pas',
   SimpleParser in '..\..\Thirdy\DelphiAST\SimpleParser\SimpleParser.pas',
   SimpleParser.Types in '..\..\Thirdy\DelphiAST\SimpleParser\SimpleParser.Types.pas',
-  DetailedRTTIFU in '..\..\Thirdy\OmniThreadLibrary\src\DetailedRTTIFU.pas',
-  DSiWin32FU in '..\..\Thirdy\OmniThreadLibrary\src\DSiWin32FU.pas',
-  GpListsFU in '..\..\Thirdy\OmniThreadLibrary\src\GpListsFU.pas',
-  GpLockFreeQueueFU in '..\..\Thirdy\OmniThreadLibrary\src\GpLockFreeQueueFU.pas',
-  GpStringHashFU in '..\..\Thirdy\OmniThreadLibrary\src\GpStringHashFU.pas',
-  GpStuffFU in '..\..\Thirdy\OmniThreadLibrary\src\GpStuffFU.pas',
-  HVStringBuilderFU in '..\..\Thirdy\OmniThreadLibrary\src\HVStringBuilderFU.pas',
-  HVStringDataFU in '..\..\Thirdy\OmniThreadLibrary\src\HVStringDataFU.pas',
-  SuperObject in '..\..\Thirdy\SuperObject\SuperObject.pas',
   TransparentCanvas in '..\..\Thirdy\TransparentCanvas\TransparentCanvas.pas',
   FindUnit.FormMessage in '..\..\Source\FindUnit.FormMessage.pas' {frmMessage},
   FindUnit.DelphiVlcWrapper in '..\..\Source\FindUnit.DelphiVlcWrapper.pas',
@@ -94,7 +67,14 @@ contains
   FindUnit.StringPositionList in '..\..\Source\FindUnit.StringPositionList.pas',
   RegExpr in '..\..\Thirdy\Andrey\RegExpr.pas',
   FindUnit.ResultsImportanceCalculator in '..\..\Source\FindUnit.ResultsImportanceCalculator.pas',
-  FindUnit.Settings in '..\..\Source\FindUnit.Settings.pas';
+  FindUnit.Settings in '..\..\Source\FindUnit.Settings.pas',
+  FindUnit.UnusedUses in '..\..\Source\FindUnit.UnusedUses.pas',
+  FindUnit.DelphiReservedWords in '..\..\Source\FindUnit.DelphiReservedWords.pas',
+  Interf.EnvironmentController in '..\..\Interfaces\Interf.EnvironmentController.pas',
+  FindUnit.PaintUnusedUses in '..\..\ideInteraction\implementations\FindUnit.PaintUnusedUses.pas',
+  FindUnit.ImageRepository in '..\..\Source\FindUnit.ImageRepository.pas',
+  FindUnit.SearchStringCache in '..\..\Source\FindUnit.SearchStringCache.pas',
+  Interf.SearchStringCache in '..\..\Interfaces\Interf.SearchStringCache.pas';
 
 end.
 

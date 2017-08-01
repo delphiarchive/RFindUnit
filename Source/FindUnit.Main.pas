@@ -3,7 +3,19 @@ unit FindUnit.Main;
 interface
 
 uses
-  ToolsAPI, Dialogs, Classes, Menus, FindUnit.EnvironmentController, Graphics, Windows, FindUnit.CompilerInterceptor, FindUnit.Header;
+  Classes,
+  Menus,
+  ToolsAPI,
+  Windows,
+
+  FindUnit.CompilerInterceptor,
+  FindUnit.EnvironmentController,
+  FindUnit.FormMessage,
+  FindUnit.Header,
+  FindUnit.PaintUnusedUses,
+  FindUnit.UnusedUses,
+  FindUnit.Utils,
+  Vcl.Graphics;
 
 {$R RFindUnitSplash.res}
 type
@@ -14,10 +26,12 @@ type
     FProjectServiceIndex: Integer;
 
     procedure AutoImport(const Context: IOTAKeyContext; KeyCode: TShortCut; var BindingResult: TKeyBindingResult);
+    procedure OrganizeUses(const Context: IOTAKeyContext; KeyCode: TShortCut; var BindingResult: TKeyBindingResult);
     procedure OpenForm(const Context: IOTAKeyContext; KeyCode: TShortCut; var BindingResult: TKeyBindingResult);
 
     procedure CreateMenus;
     procedure ForceRegisterKeys(Sender: TObject);
+    procedure GetUnusedUses(const Context: IOTAKeyContext; KeyCode: TShortCut; var BindingResult: TKeyBindingResult);
   public
     constructor Create;
     destructor Destroy; override;
@@ -34,14 +48,21 @@ type
 implementation
 
 uses
-  FindUnit.FormSearch, Log4PAscal, FindUnit.Utils, FindUnit.OTAUtils, SysUtils, FindUnit.Settings;
+  Log4PAscal,
+  SysUtils,
+
+  FindUnit.FormSearch,
+  FindUnit.OTAUtils,
+  FindUnit.Settings;
 
 var
   vKbIndex: Integer;
+  vNotifierIndex: Integer;
   VFindUnit: IInterface;
   AboutBoxServices : IOTAAboutBoxServices = nil;
   AboutBoxIndex : Integer = 0;
   vBindingServices: IOTAKeyBindingServices;
+  vIDENotifierIndex: Integer;
 
 resourcestring
   resPackageName = 'RfUtils - Import Usages';
@@ -53,20 +74,25 @@ resourcestring
 procedure Register;
 var
   OtaKey: IOTAKeyboardBinding;
+  Services: IOTAServices;
+  IActionServices: IOTAActionServices;
 begin
-  Logger := TLogger.Create(FindUnitDirLogger + Format('pid_%d_log_%s.txt', [GetCurrentProcessId, FormatDateTime('yyyy-mm-dd', Now)]));
+  Logger := TLogger.Create(FindUnitDirLogger + Format('rfindunitlog_%s_%d.txt', [FormatDateTime('yyyy-mm-dd', Now), GetCurrentProcessId]));
 
   VFindUnit := TRFindUnitMain.Create;
   OtaKey := VFindUnit as IOTAKeyboardBinding;
   with (BorlandIDEServices as IOTAKeyboardServices) do
     vKbIndex := AddKeyboardBinding(OtaKey);
+
+  vIDENotifierIndex := (BorlandIDEServices as IOTAServices).AddNotifier(TRfIDENotifier.Create);
+  Logger.Debug('Registering ide notifier ' + IntToStr(vIDENotifierIndex));
 end;
 
 procedure RegisterSplashScreen;
 var
-  LBmp: Graphics.TBitmap;
+  LBmp: Vcl.Graphics.TBitmap;
 begin
-  LBmp := Graphics.TBitmap.Create;
+  LBmp := Vcl.Graphics.TBitmap.Create;
   LBmp.LoadFromResourceName(HInstance, 'SPLASH');
   SplashScreenServices.AddPluginBitmap(resPackageName, LBmp.Handle, False, resLicense, '');
   LBmp.Free;
@@ -83,6 +109,9 @@ end;
 
 procedure UnregisterAboutBox;
 begin
+  if vIDENotifierIndex >= 0 then
+    (BorlandIDEServices as IOTAServices).RemoveNotifier(vIDENotifierIndex);
+
   if (AboutBoxIndex = 0) and Assigned(AboutBoxServices) then
   begin
     AboutBoxServices.RemovePluginInfo(AboutBoxIndex);
@@ -133,19 +162,21 @@ begin
   RfItemMenu.Add(NewItem);
 end;
 
-
-
 procedure TRFindUnitMain.ForceRegisterKeys(Sender: TObject);
 begin
+  vBindingServices.AddKeyBinding([ShortCut(Ord('U'), [ssCtrl, ssShift])], OrganizeUses, nil);
   vBindingServices.AddKeyBinding([ShortCut(Ord('A'), [ssCtrl, ssShift])], OpenForm, nil);
   vBindingServices.AddKeyBinding([ShortCut(Ord('I'), [ssCtrl, ssShift])], AutoImport, nil);
+  vBindingServices.AddKeyBinding([ShortCut(Ord('L'), [ssCtrl, ssShift])], GetUnusedUses, nil);
 end;
 
 procedure TRFindUnitMain.BindKeyboard(const BindingServices: IOTAKeyBindingServices);
 begin
   vBindingServices := BindingServices;
-  BindingServices.AddKeyBinding([ShortCut(Ord('A'), [ssCtrl, ssShift])], OpenForm, nil);
-  BindingServices.AddKeyBinding([ShortCut(Ord('I'), [ssCtrl, ssShift])], AutoImport, nil);
+  vBindingServices.AddKeyBinding([ShortCut(Ord('U'), [ssCtrl, ssShift])], OrganizeUses, nil);
+  vBindingServices.AddKeyBinding([ShortCut(Ord('A'), [ssCtrl, ssShift])], OpenForm, nil);
+  vBindingServices.AddKeyBinding([ShortCut(Ord('I'), [ssCtrl, ssShift])], AutoImport, nil);
+  vBindingServices.AddKeyBinding([ShortCut(Ord('L'), [ssCtrl, ssShift])], GetUnusedUses, nil);
   CreateMenus;
 end;
 
@@ -157,6 +188,7 @@ begin
   ProjectFileStorageService := BorlandIDEServices.GetService(IOTAProjectFileStorage) as IOTAProjectFileStorage;
   FEnvControl := TEnvironmentController.Create;
   FProjectServiceIndex := ProjectFileStorageService.AddNotifier(FEnvControl);
+  TRfPaintUnsuedUses.EnvControl := FEnvControl;
 
   CompilerInterceptor.SetEnvControl(FEnvControl);
 
@@ -198,6 +230,30 @@ begin
   FEnvControl.ForceLoadProjectPath;
 end;
 
+procedure TRFindUnitMain.GetUnusedUses(const Context: IOTAKeyContext; KeyCode: TShortCut;
+  var BindingResult: TKeyBindingResult);
+var
+  UnusedUses: TUnsedUsesProcessor;
+  CurEditor: IOTASourceEditor;
+begin
+  Logger.Debug('TRFindUnitMain.GetUnusedUses: Fase 1');
+  if FEnvControl = nil then
+    Exit;
+
+  Logger.Debug('TRFindUnitMain.GetUnusedUses: Fase 2');
+  CurEditor := OtaGetCurrentSourceEditor;
+  if CurEditor = nil then
+    Exit;
+
+  BindingResult := krHandled;
+
+  Logger.Debug('TRFindUnitMain.GetUnusedUses: Fase 3');
+  UnusedUses := TUnsedUsesProcessor.Create(CurEditor.FileName);
+  UnusedUses.SetEnvControl(FEnvControl);
+  UnusedUses.Process;
+  UnusedUses.Free;
+end;
+
 procedure TRFindUnitMain.OpenForm(const Context: IOTAKeyContext; KeyCode: TShortCut;
   var BindingResult: TKeyBindingResult);
 var
@@ -218,12 +274,21 @@ begin
   end;
 end;
 
+procedure TRFindUnitMain.OrganizeUses(const Context: IOTAKeyContext; KeyCode: TShortCut;
+  var BindingResult: TKeyBindingResult);
+begin
+  if not GlobalSettings.OrganizeUses then
+    Exit;
+
+  BindingResult := krHandled;
+  FEnvControl.OrganizeUses;
+  TfrmMessage.ShowInfoToUser('Uses organized. If the uses contains comments or IFDEF it wont be organized');
+end;
+
 procedure Clear;
 begin
   with (BorlandIDEServices as IOTAKeyboardServices) do
-  begin
     RemoveKeyboardBinding(vKbIndex);
-  end;
 end;
 
 initialization

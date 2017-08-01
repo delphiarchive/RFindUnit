@@ -3,9 +3,20 @@ unit FindUnit.Utils;
 interface
 
 uses
-  IOUtils, Classes, SimpleParser.Lexer.Types, TlHelp32, Windows;
+  Classes,
+  IOUtils,
+  TlHelp32,
+  Windows,
+  SimpleParser.Lexer.Types,
+  System.Generics.Collections,
+  System.StrUtils;
 
 type
+  TFileInfo = record
+    Path: string;
+    LastAccess: TDateTime;
+  end;
+
   TIncludeHandler = class(TInterfacedObject, IIncludeHandler)
   private
     FPath: string;
@@ -22,9 +33,9 @@ type
     class function ConvertPathsToFullPath(Paths: string): string;
   end;
 
-function GetAllFilesFromPath(const Path, Filter: string): TStringList;
-function GetAllPasFilesFromPath(const Path: string): TStringList;
-function GetAllDcuFilesFromPath(const Path: string): TStringList;
+function GetAllFilesFromPath(const Path, Filter: string): TDictionary<string, TFileInfo>;
+function GetAllPasFilesFromPath(const Path: string): TDictionary<string, TFileInfo>;
+function GetAllDcuFilesFromPath(const Path: string): TDictionary<string, TFileInfo>;
 
 function Fetch(var AInput: string; const ADelim: string = ''; const ADelete: Boolean = True;
   const ACaseSensitive: Boolean = False): string; inline;
@@ -32,6 +43,10 @@ function Fetch(var AInput: string; const ADelim: string = ''; const ADelete: Boo
 function IsProcessRunning(const AExeFileName: string): Boolean;
 function GetHashCodeFromStr(Str: PChar): Integer;
 function TextExists(SubStr, Str: string; CaseSensitive: Boolean = true): Boolean; inline;
+
+procedure GetUnitFromSearchSelection(SearchSelection: string; out UnitName, ClassName: string);
+
+function DictionaryToString(Dir: TDictionary<string, string>): string;
 
 var
   FindUnitDir: string;
@@ -42,7 +57,43 @@ var
 implementation
 
 uses
-  Types, SysUtils, Log4PAscal;
+  Log4PAscal,
+  SysUtils,
+  Types;
+
+function DictionaryToString(Dir: TDictionary<string, string>): string;
+var
+  Value: string;
+begin
+  Result := '';
+
+  if Dir = nil then
+    Exit;
+
+  for Value in Dir.Values do
+    Result := Result + Value + ',';
+end;
+
+procedure GetUnitFromSearchSelection(SearchSelection: string; out UnitName, ClassName: string);
+var
+  IsSetEnumItem: Boolean;
+begin
+  IsSetEnumItem := SearchSelection.EndsWith(' item');
+
+  UnitName := SearchSelection;
+  if Pos('.*', UnitName) > 0 then
+    UnitName := Trim(Fetch(UnitName, '.*'))
+  else
+    UnitName := Trim(Fetch(UnitName, '-'));
+  UnitName := ReverseString(UnitName);
+  ClassName := Fetch(UnitName,'.');
+
+  if IsSetEnumItem then
+    ClassName := Fetch(UnitName,'.');
+
+  ClassName := ReverseString(ClassName);
+  UnitName := ReverseString(UnitName);
+end;
 
 function TextExists(SubStr, Str: string; CaseSensitive: Boolean): Boolean;
 begin
@@ -164,24 +215,33 @@ begin
   end;
 end;
 
-function GetAllFilesFromPath(const Path, Filter: string): TStringList;
+function GetAllFilesFromPath(const Path, Filter: string): TDictionary<string, TFileInfo>;
 var
   Files: TStringDynArray;
   FilePath: string;
+  FileInfo: TFileInfo;
 begin
   Files := IOUtils.TDirectory.GetFiles(Path, Filter, TSearchOption.soTopDirectoryOnly);
 
-  Result := TStringList.Create;
+  Result := TDictionary<string, TFileInfo>.Create;
   for FilePath in Files do
-    Result.Add(FilePath);
+  begin
+    FileInfo.Path := Trim(FilePath);
+    if FileExists(FilePath) then
+      FileInfo.LastAccess := IOUtils.TFile.GetLastWriteTime(FilePath)
+    else
+      FileInfo.LastAccess := 0;
+
+    Result.Add(FileInfo.Path, FileInfo);
+  end;
 end;
 
-function GetAllDcuFilesFromPath(const Path: string): TStringList;
+function GetAllDcuFilesFromPath(const Path: string): TDictionary<string, TFileInfo>;
 begin
   Result := GetAllFilesFromPath(Path, '*.dcu');
 end;
 
-function GetAllPasFilesFromPath(const Path: string): TStringList;
+function GetAllPasFilesFromPath(const Path: string): TDictionary<string, TFileInfo>;
 begin
   Result := GetAllFilesFromPath(Path, '*.pas');
 end;

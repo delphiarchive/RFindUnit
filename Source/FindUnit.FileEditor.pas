@@ -3,8 +3,16 @@ unit FindUnit.FileEditor;
 interface
 
 uses
-  ToolsApi, SimpleParser.Lexer.Types, DelphiAST.Classes, FindUnit.OtaUtils, Classes, DesignEditors, Graphics,
-  FindUnit.Header, FindUnit.FormMessage, FindUnit.Settings;
+  Classes,
+  RegExpr,
+  SysUtils,
+  ToolsApi,
+
+  FindUnit.FormMessage,
+  FindUnit.Header,
+  FindUnit.OtaUtils,
+  FindUnit.Settings,
+  FindUnit.Utils;
 
 type
   TCharPosition = record
@@ -18,6 +26,7 @@ type
   TFileRegion = class(TObject)
   strict private
     FSource: IOTASourceEditor;
+    FUsesNormalized: TStringList;
     FUses: TStringList;
     FUsesPosition: TCharPosition;
     FRegionPosition: TCharPosition;
@@ -25,8 +34,11 @@ type
 
     function RemoveUsesFromList(UsesList: TStrings; ItemToRemove: string): string;
 
-    procedure DeleteInformationFrom(FromLine, ToLine: integer);
-    procedure WriteInformationAtPostion(Line, Position: Integer; const Information: string);
+    procedure DeleteInformationFrom(FromLine, ToLine: integer; var Writer: IOTAEditWriter);
+    procedure WriteInformationAtPostion(Line, Position: Integer; const Information: string; var Writer: IOTAEditWriter);
+
+    function AddUsesInternal(UseUnit: string; var Writer: IOTAEditWriter): Boolean; overload;
+    function AddUsesInternal(UseUnit: TStringList; var Writer: IOTAEditWriter): Boolean; overload;
   public
     constructor Create(SourceEditor: IOTASourceEditor);
     destructor Destroy; override;
@@ -40,7 +52,13 @@ type
 
     procedure GetUsesFromText(FullFileText: TStringList);
     function UsesExists(UseUnit: string): Boolean;
-    procedure RemoveUses(UseUnit: string);
+    procedure RemoveUses(UseUnit: string; var Writer: IOTAEditWriter);
+    procedure RemoveAllSection(var Writer: IOTAEditWriter);
+    function AddUses(UseUnit: string; var Writer: IOTAEditWriter): Boolean;
+    procedure OrganizeUses(var Writer: IOTAEditWriter);
+
+    function GetUsesList: TStringList;
+    function AreThereUnparsableCharsInSection: Boolean;
   end;
 
   TSourceFileEditor = class(TObject)
@@ -54,8 +72,8 @@ type
     function GetInformationsFor(Token: string; SearchForEnd: Boolean; StartLine, EndLine: Integer): TCharPosition;
     procedure GetInfos;
 
-    function AddUsesToRegion(Region: TFileRegion; UseUnit: string): Boolean;
-    procedure WriteInformationAtPostion(Line, Position: Integer; const Information: string);
+    function AddUsesToRegion(Region: TFileRegion; UseUnit: string; var Writer: IOTAEditWriter): Boolean;
+    procedure WriteInformationAtPostion(Line, Position: Integer; const Information: string; var Writer: IOTAEditWriter);
   public
     constructor Create(SourceEditor: IOTASourceEditor);
     destructor Destroy; override;
@@ -65,22 +83,23 @@ type
     function AddUsesToInterface(const UseUnit: string): Boolean;
     function AddUsesToImplementation(const UseUnit: string): Boolean;
 
+    procedure OrganizeUsesInterface;
+    procedure OrganizeUsesImplementation;
+
     procedure RemoveUsesFromInterface(const UseUnit: string);
     procedure RemoveUsesFromImplementation(const UseUnit: string);
 
     function IsLineOnImplementationSection(Line: Integer): Boolean;
 
-    procedure AddUnit(UnitInfo: TStringPosition; ShowMessageOnAdd: Boolean = True);
+    procedure AddUnit(UnitInfo: TStringPosition; DisplayMessageOnAdd: Boolean = True);
   end;
 
 implementation
 
-uses
-  SysUtils, FindUnit.Utils, RegExpr;
 
 { TSourceFileEditor }
 
-procedure TSourceFileEditor.AddUnit(UnitInfo: TStringPosition; ShowMessageOnAdd: Boolean);
+procedure TSourceFileEditor.AddUnit(UnitInfo: TStringPosition; DisplayMessageOnAdd: Boolean);
 var
   MessageText: string;
 begin
@@ -96,60 +115,33 @@ begin
       MessageText := 'Unit ' + UnitInfo.Value + ' added to interface''s uses.';
   end;
 
-  if (MessageText <> '') and ShowMessageOnAdd then
+  if (MessageText <> '') and DisplayMessageOnAdd then
     TfrmMessage.ShowInfoToUser(MessageText);
 end;
 
 function TSourceFileEditor.AddUsesToImplementation(const UseUnit: string): Boolean;
+var
+  Writer: IOTAEditWriter;
 begin
-  RemoveUsesFromInterface(UseUnit);
-  Result := AddUsesToRegion(FImplementationRegion, UseUnit);
+  FInterfaceRegion.RemoveUses(UseUnit, Writer);
+  Writer := nil;
+  Prepare;
+  Result := AddUsesToRegion(FImplementationRegion, UseUnit, Writer);
 end;
 
 function TSourceFileEditor.AddUsesToInterface(const UseUnit: string): Boolean;
+var
+  Writer: IOTAEditWriter;
 begin
-  RemoveUsesFromImplementation(UseUnit);
-  Result := AddUsesToRegion(FInterfaceRegion, UseUnit);
+  FImplementationRegion.RemoveUses(UseUnit, Writer);
+  Writer := nil;
+  Prepare;
+  Result := AddUsesToRegion(FInterfaceRegion, UseUnit, Writer);
 end;
 
-function TSourceFileEditor.AddUsesToRegion(Region: TFileRegion; UseUnit: string): Boolean;
-var
-  Line: Integer;
-  PosChar: Integer;
-  NewUsesPosition: TCharPosition;
-  UnitContent: string;
+function TSourceFileEditor.AddUsesToRegion(Region: TFileRegion; UseUnit: string; var Writer: IOTAEditWriter): Boolean;
 begin
-  Result := False;
-  if Region.UsesExists(UseUnit) then
-    Exit;
-
-  Result := True;
-  Line := Region.UsesPosition.EndLine;
-  PosChar := Region.UsesPosition.EndPos -1;
-  if not Region.HaveUses then
-  begin
-    Line := Region.RegionPosition.StartLine + 1;
-    PosChar := 0;
-
-    UnitContent := '  ' + UseUnit + ';';
-    UseUnit := #13#10 + 'uses' + #13#10 + UnitContent + #13#10;
-
-    NewUsesPosition.StartLine := Line;
-    NewUsesPosition.StartPos := PosChar;
-    NewUsesPosition.EndLine := NewUsesPosition.StartLine + 2;
-    NewUsesPosition.EndPos := UnitContent.Length;
-
-    Region.SetUsesPosition(NewUsesPosition);
-  end
-  else
-  begin
-    if PosChar > 80 then
-      UseUnit := ', ' + #13#10 + '  ' + UseUnit
-    else
-      UseUnit := ', ' + UseUnit;
-  end;
-
-  WriteInformationAtPostion(Line, PosChar, UseUnit);
+  Result := Region.AddUses(UseUnit, Writer);
 end;
 
 constructor TSourceFileEditor.Create(SourceEditor: IOTASourceEditor);
@@ -170,7 +162,6 @@ end;
 
 function TSourceFileEditor.GetInformationsFor(Token: string; SearchForEnd: Boolean; StartLine, EndLine: Integer): TCharPosition;
 var
-  I: Integer;
   OutPosition: Integer;
   OutLine: Integer;
 
@@ -244,6 +235,22 @@ begin
   Result := Line > FImplementationRegion.RegionPosition.StartLine;
 end;
 
+procedure TSourceFileEditor.OrganizeUsesImplementation;
+var
+  Writer: IOTAEditWriter;
+begin
+  Writer :=  nil;
+  FImplementationRegion.OrganizeUses(Writer);
+end;
+
+procedure TSourceFileEditor.OrganizeUsesInterface;
+var
+  Writer: IOTAEditWriter;
+begin
+  Writer :=  nil;
+  FInterfaceRegion.OrganizeUses(Writer);
+end;
+
 procedure TSourceFileEditor.ParseInformations;
 begin
   GetInfos;
@@ -261,19 +268,22 @@ begin
 end;
 
 procedure TSourceFileEditor.RemoveUsesFromImplementation(const UseUnit: string);
+var
+  Writer: IOTAEditWriter;
 begin
-  FImplementationRegion.RemoveUses(UseUnit);
+  FImplementationRegion.RemoveUses(UseUnit, Writer);
 end;
 
 procedure TSourceFileEditor.RemoveUsesFromInterface(const UseUnit: string);
+var
+  Writer: IOTAEditWriter;
 begin
-  FInterfaceRegion.RemoveUses(UseUnit);
+  FInterfaceRegion.RemoveUses(UseUnit, Writer);
 end;
 
-procedure TSourceFileEditor.WriteInformationAtPostion(Line, Position: Integer; const Information: string);
+procedure TSourceFileEditor.WriteInformationAtPostion(Line, Position: Integer; const Information: string; var Writer: IOTAEditWriter);
 var
   InfoPosition: TOTACharPos;
-  FileWriter: IOTAEditWriter;
   SetPosition: Integer;
 begin
   if Information = '' then
@@ -285,21 +295,17 @@ begin
 
   SetPosition := FSource.EditViews[0].CharPosToPos(InfoPosition);
 
-  FileWriter := FSource.CreateUndoableWriter;
-  try
-    FileWriter.CopyTo(SetPosition);
-    FileWriter.Insert(PAnsiChar(AnsiString(Information)));
-  finally
-    FileWriter := nil;
-  end;
+  if Writer = nil then
+    Writer := FSource.CreateUndoableWriter;
+  Writer.CopyTo(SetPosition);
+  Writer.Insert(PAnsiChar(AnsiString(Information)));
 end;
 
 { TFileRegion }
 
-procedure TFileRegion.DeleteInformationFrom(FromLine, ToLine: integer);
+procedure TFileRegion.DeleteInformationFrom(FromLine, ToLine: integer; var Writer: IOTAEditWriter);
 var
   StartPosition, EndPosition: TOTACharPos;
-  FileWriter: IOTAEditWriter;
   StartPos: Integer;
   EndPos: Integer;
 begin
@@ -315,25 +321,236 @@ begin
   StartPos := FSource.EditViews[0].CharPosToPos(StartPosition);
   EndPos := FSource.EditViews[0].CharPosToPos(EndPosition);
 
-  FileWriter := FSource.CreateUndoableWriter;
+  if Writer = nil then
+    Writer := FSource.CreateUndoableWriter;
+
+  Writer.CopyTo(StartPos);
+  Writer.DeleteTo(EndPos);
+end;
+
+function TFileRegion.AddUses(UseUnit: string; var Writer: IOTAEditWriter): Boolean;
+var
+  NewUses: TStringList;
+begin
+  Result := False;
+  if UsesExists(UseUnit) then
+    Exit;
+
+  if GlobalSettings.OrganizeUsesAfterAddingNewUses and GlobalSettings.SortUsesAfterAdding and (not AreThereUnparsableCharsInSection) then
+  begin
+    RemoveAllSection(Writer);
+    Writer := nil;
+
+    NewUses := GetUsesList;
+    NewUses.Add(UseUnit);
+    AddUsesInternal(NewUses, Writer);
+    NewUses.Free;
+  end
+  else
+    AddUsesInternal(UseUnit, Writer);
+end;
+
+function TFileRegion.AddUsesInternal(UseUnit: string; var Writer: IOTAEditWriter): Boolean;
+var
+  Line: Integer;
+  PosChar: Integer;
+  NewUsesPosition: TCharPosition;
+  UnitContent: string;
+begin
+  Result := True;
+
+  if (UseUnit.ToUpper = 'USES') or UseUnit.IsEmpty then
+    Exit;
+
+  Line := UsesPosition.EndLine;
+  PosChar := UsesPosition.EndPos -1;
+  if not HaveUses then
+  begin
+    Line := RegionPosition.StartLine + 1;
+    PosChar := 0;
+
+    UnitContent := '  ' + UseUnit + ';';
+    UseUnit := #13#10 + 'uses' + #13#10 + UnitContent + #13#10;
+
+    NewUsesPosition.StartLine := Line;
+    NewUsesPosition.StartPos := PosChar;
+    NewUsesPosition.EndLine := NewUsesPosition.StartLine + 2;
+    NewUsesPosition.EndPos := UnitContent.Length;
+
+    SetUsesPosition(NewUsesPosition);
+  end
+  else
+  begin
+    if (PosChar > GlobalSettings.BreakUsesLineAt) or (GlobalSettings.BreakLine)  then
+      UseUnit := ',' + #13#10 + '  ' + UseUnit
+    else
+      UseUnit := ', ' + UseUnit;
+  end;
+
+  WriteInformationAtPostion(Line, PosChar, UseUnit, Writer);
+end;
+
+function CompareNamespaces(List: TStringList; Index1, Index2: Integer): Integer;
+var
+  ItemOne: string;
+  ItemTwo: string;
+  ItemOneHasDot: Boolean;
+  ItemTwoHasDot: Boolean;
+begin
+  ItemOne := List[Index1];
+  ItemTwo := List[Index2];
+
+  ItemOneHasDot := Pos('.', ItemOne) > 0;
+  ItemTwoHasDot := Pos('.', ItemTwo) > 0;
+
+  if (ItemOneHasDot = ItemTwoHasDot) then
+    Result := CompareStr(ItemOne, ItemTwo)
+  else if ItemOneHasDot then
+    Result := 1
+  else
+    Result := -1;
+end;
+
+function TFileRegion.AddUsesInternal(UseUnit: TStringList; var Writer: IOTAEditWriter): Boolean;
+var
+  Line: Integer;
+  PosChar: Integer;
+  NewUsesPosition: TCharPosition;
+  NewUses: string;
+  UseCur: string;
+  CurDomain: string;
+  LastDomain: string;
+  MustAddBlankLine: Boolean;
+  CharCount: Integer;
+  UseCurLength: Integer;
+  FinalUseCur: string;
+  HasNamespace: Boolean;
+begin
+  Result := True;
+
+  if GlobalSettings.SortUsesAfterAdding then
+  begin
+    if GlobalSettings.GroupNonNamespaceUnits then
+      UseUnit.CustomSort(CompareNamespaces)
+    else
+      UseUnit.Sort;
+  end;
+
+  LastDomain := '';
+  NewUses := '';
+  CharCount := 0;
+  for UseCur in UseUnit do
+  begin
+    HasNamespace := Pos('.', UseCur) > 0;
+    if (UseCur.Trim.ToUpper = 'USES')
+      or (UseCur.Trim.IsEmpty) then
+      Continue;
+
+    if NewUses.IsEmpty then
+    begin
+      NewUses := '  ' + UseCur;
+
+      CharCount := Length(NewUses);
+
+      LastDomain := UseCur;
+      LastDomain := Fetch(LastDomain, '.', False);
+    end
+    else if ((not HasNamespace) and GlobalSettings.BreakLineForNonDomainUses and GlobalSettings.BreakLine)
+        or (HasNamespace and GlobalSettings.BreakLine) then
+    begin
+
+      if GlobalSettings.BlankLineBtwNamespaces then
+      begin
+        CurDomain := UseCur;
+        CurDomain := Fetch(CurDomain, '.', False);
+
+        if GlobalSettings.GroupNonNamespaceUnits and (not HasNamespace) then
+          MustAddBlankLine := False
+        else if not LastDomain.IsEmpty  then
+          MustAddBlankLine := not CurDomain.Equals(LastDomain);
+        LastDomain := CurDomain;
+      end;
+
+      if MustAddBlankLine then
+        NewUses := NewUses + ',' + #13#10 + #13#10 + '  ' + UseCur
+      else
+        NewUses := NewUses + ',' + #13#10 + '  ' + UseCur;
+
+      MustAddBlankLine := False;
+    end
+    else
+    begin
+      UseCurLength := Length(UseCur);
+      if (CharCount + UseCurLength) >= GlobalSettings.BreakUsesLineAt then
+      begin
+        NewUses := NewUses + ',' + #13#10 + '  ' + UseCur;
+        CharCount := UseCurLength + 2 {padding};
+      end
+      else
+      begin
+        FinalUseCur := ', ' + UseCur;
+        NewUses := NewUses + FinalUseCur;
+        CharCount := CharCount + Length(FinalUseCur);
+      end;
+    end;
+  end;
+  NewUses := NewUses + ';';
+
+  NewUses := #13#10 + 'uses' + #13#10 + NewUses;
+
+  Line := UsesPosition.EndLine;
+  PosChar := UsesPosition.EndPos -1;
+  if not HaveUses then
+  begin
+    Line := RegionPosition.StartLine + 1;
+    PosChar := 0;
+
+    NewUsesPosition.StartLine := Line;
+    NewUsesPosition.StartPos := PosChar;
+    NewUsesPosition.EndLine := NewUsesPosition.StartLine + 2;
+    NewUsesPosition.EndPos := NewUses.Length;
+
+    SetUsesPosition(NewUsesPosition);
+  end;
+  WriteInformationAtPostion(Line, PosChar, NewUses, Writer);
+end;
+
+function TFileRegion.AreThereUnparsableCharsInSection: Boolean;
+var
+  I: Integer;
+  UsesText: TStringList;
+begin
+  Result := False;
+  if not HaveUses then
+    Exit;
+
+  UsesText := TStringList.Create;
   try
-    FileWriter.CopyTo(StartPos);
-    FileWriter.DeleteTo(EndPos);
+    for I := FUsesPosition.StartLine to FUsesPosition.EndLine do
+      UsesText.Add(Trim(FFullFileText[I]));
+
+    Result := (UsesText.Text.IndexOf('/') > 0) or (UsesText.Text.IndexOf('{') > 0);
   finally
-    FileWriter := nil;
+    UsesText.Free;
   end;
 end;
 
 constructor TFileRegion.Create(SourceEditor: IOTASourceEditor);
 begin
+  FUsesNormalized := TStringList.Create;
+  FUsesNormalized.Duplicates := dupIgnore;
+  FUsesNormalized.Sorted := True;
+
   FUses := TStringList.Create;
   FUses.Duplicates := dupIgnore;
   FUses.Sorted := True;
+
   FSource := SourceEditor;
 end;
 
 destructor TFileRegion.Destroy;
 begin
+  FUsesNormalized.Free;
   FUses.Free;
   inherited;
 end;
@@ -363,7 +580,8 @@ begin
       while Line <> '' do
       begin
         Item := Fetch(Line, ',');
-        FUses.Add(UpperCase(Item));
+        FUsesNormalized.Add(UpperCase(Item));
+        FUses.Add(Item);
       end;
     end;
   finally
@@ -371,19 +589,54 @@ begin
   end;
 end;
 
+function TFileRegion.GetUsesList: TStringList;
+begin
+  Result := TStringList.Create;
+  Result.Text := FUses.Text;
+end;
+
 function TFileRegion.HaveUses: Boolean;
 begin
   Result := UsesPosition.StartLine > 0;
 end;
 
-procedure TFileRegion.RemoveUses(UseUnit: string);
+procedure TFileRegion.OrganizeUses(var Writer: IOTAEditWriter);
+var
+  NewUses: TStringList;
+begin
+  if not HaveUses then
+    Exit;
+
+  if GlobalSettings.SortUsesAfterAdding and (not AreThereUnparsableCharsInSection) then
+  begin
+    RemoveAllSection(Writer);
+    Writer := nil;
+
+    NewUses := GetUsesList;
+    AddUsesInternal(NewUses, Writer);
+    NewUses.Free;
+  end;
+end;
+
+procedure TFileRegion.RemoveAllSection(var Writer: IOTAEditWriter);
+begin
+  if not HaveUses then
+    Exit;
+
+  DeleteInformationFrom(FUsesPosition.StartLine, FUsesPosition.EndLine, Writer);
+  FUsesPosition.StartLine := 0;
+end;
+
+procedure TFileRegion.RemoveUses(UseUnit: string; var Writer: IOTAEditWriter);
 var
   I: Integer;
   LocalUses: TStringList;
 begin
+
   if not UsesExists(UseUnit) then
     Exit;
 
+  Writer := nil;
   FFullFileText.Text := EditorAsString(ActiveSourceEditor);
   LocalUses := TStringList.Create;
   try
@@ -391,9 +644,9 @@ begin
       LocalUses.Add(FFullFileText[I]);
 
     LocalUses.Text := RemoveUsesFromList(LocalUses, UseUnit);
-    DeleteInformationFrom(FUsesPosition.StartLine, FUsesPosition.EndLine);
+    DeleteInformationFrom(FUsesPosition.StartLine, FUsesPosition.EndLine, Writer);
     if UpperCase(Trim(LocalUses.Text)) <> 'USES'  then
-      WriteInformationAtPostion(FUsesPosition.StartLine, 0, LocalUses.Text);
+      WriteInformationAtPostion(FUsesPosition.StartLine, 0, LocalUses.Text, Writer);
   finally
     LocalUses.Free;
   end;
@@ -425,13 +678,12 @@ end;
 
 function TFileRegion.UsesExists(UseUnit: string): Boolean;
 begin
-  Result := FUses.IndexOf(UpperCase(UseUnit)) > -1;
+  Result := FUsesNormalized.IndexOf(UpperCase(UseUnit)) > -1;
 end;
 
-procedure TFileRegion.WriteInformationAtPostion(Line, Position: Integer; const Information: string);
+procedure TFileRegion.WriteInformationAtPostion(Line, Position: Integer; const Information: string; var Writer: IOTAEditWriter);
 var
   InfoPosition: TOTACharPos;
-  FileWriter: IOTAEditWriter;
   SetPosition: Integer;
 begin
   if Information = '' then
@@ -443,13 +695,18 @@ begin
 
   SetPosition := FSource.EditViews[0].CharPosToPos(InfoPosition);
 
-  FileWriter := FSource.CreateUndoableWriter;
-  try
-    FileWriter.CopyTo(SetPosition);
-    FileWriter.Insert(PAnsiChar(AnsiString(Information)));
-  finally
-    FileWriter := nil;
-  end;
+////  NewUsesPosition.StartLine := FUsesPosition.StartLine;
+////  NewUsesPosition.StartPos := FUsesPosition.StartPos;
+////  NewUsesPosition.EndLine := InfoPosition.Line;
+////  NewUsesPosition.EndPos := InfoPosition.CharIndex + Length(Information);
+//
+//  SetUsesPosition(NewUsesPosition);
+
+  if Writer = nil then
+    Writer := FSource.CreateUndoableWriter;
+
+  Writer.CopyTo(SetPosition);
+  Writer.Insert(PAnsiChar(AnsiToUtf8(Information)));
 end;
 
 end.
