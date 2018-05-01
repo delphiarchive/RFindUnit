@@ -75,6 +75,21 @@ object frmFindUnit: TfrmFindUnit
       Caption = 'Process DCUs files from Library Path'
       OnClick = btnProcessDCUsClick
     end
+    object lblWarnDcuDecompi: TLabel
+      Left = 246
+      Top = 72
+      Width = 280
+      Height = 14
+      Caption = '<-- It'#39's highly recommend to run this process'
+      Color = clRed
+      Font.Charset = DEFAULT_CHARSET
+      Font.Color = clRed
+      Font.Height = -12
+      Font.Name = 'Tahoma'
+      Font.Style = [fsBold]
+      ParentColor = False
+      ParentFont = False
+    end
     object chkSearchLibraryPath: TCheckBox
       Left = 19
       Top = 45
@@ -154,6 +169,8 @@ object frmFindUnit: TfrmFindUnit
         ParentFont = False
         Layout = tlCenter
         WordWrap = True
+        ExplicitWidth = 541
+        ExplicitHeight = 26
       end
     end
   end
@@ -230,7 +247,7 @@ object frmFindUnit: TfrmFindUnit
     Left = 476
     Top = 177
     Bitmap = {
-      494C010101000500040010001000FFFFFFFFFF10FFFFFFFFFFFFFFFF424D3600
+      494C010101000500080010001000FFFFFFFFFF10FFFFFFFFFFFFFFFF424D3600
       0000000000003600000028000000400000001000000001002000000000000010
       000000000000000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFFFFFF
       FFFFFFFFFFFFFFFFFFFFFFFFFFFF2D2D2D0029292900FFFFFFFFFFFFFFFFFFFF

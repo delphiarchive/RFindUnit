@@ -4,91 +4,50 @@ unit uDelphiInstallationCheck;
 interface
 
 uses
-  Controls, SysUtils, Windows, ComCtrls;
+  ComCtrls, Controls, SysUtils, Windows,
+
+  System.Win.Registry;
 
 type
   TDelphiVersions = (
-    Delphi4,
-    Delphi5,
-    Delphi6,
-    Delphi7,
-    Delphi8,
-    Delphi2005,
-    Delphi2006,
-    Delphi2007,
-    Delphi2009,
-    Delphi2010,
-    DelphiXE,
-    DelphiXE2,
-    DelphiXE3,
-    DelphiXE4,
-    DelphiXE5,
-    DelphiXE6,
-    DelphiXE7,
-    DelphiXE8,
     DelphiSeattle10,
-    DelphiBerlin101);
+    DelphiBerlin101,
+    DelphiTokyo);
 
   TDelphiInstallationCheck = class(TObject)
   public
-    procedure LoadInstalledVersions(ImageList: TImageList; ListView: TListView);
-    function GetDelphiVersionByName(DelphiName: string): TDelphiVersions;
-    function GetDelphiRegPathFromVersion(Version: TDelphiVersions): string;
+    class procedure LoadInstalledVersions(ImageList: TImageList; ListView: TListView);
+    class function GetDelphiVersionByName(DelphiName: string): TDelphiVersions;
+    class function GetDelphiRegPathFromVersion(Version: TDelphiVersions): string;
+    class function GetDelphiDpkFromVersion(Version: TDelphiVersions): string;
+    class function GetDelphiNameByVersion(Version: TDelphiVersions): string;
   end;
 
 implementation
 
 uses
-  Registry, CommCtrl, ShellAPI;
+  CommCtrl, ShellAPI;
 
 const
   TDelphiVersionsNames: array [TDelphiVersions] of string = (
-    'Delphi 4',
-    'Delphi 5',
-    'Delphi 6',
-    'Delphi 7',
-    'Delphi 8',
-    'BDS 2005',
-    'BDS 2006',
-    'RAD Studio 2007',
-    'RAD Studio 2009',
-    'RAD Studio 2010',
-    'RAD Studio XE',
-    'RAD Studio XE 2',
-    'RAD Studio XE 3',
-    'RAD Studio XE 4',
-    'RAD Studio XE 5',
-    'RAD Studio XE 6',
-    'RAD Studio XE 7',
-    'RAD Studio XE 8',
     'RAD Studio 10 Seattle',
     'RAD Studio 10.1 Berlin',
-    'RAD Studio 10.2 Tokyo',
+    'RAD Studio 10.2 Tokyo'
     );
 
   TDelphiRegPaths: array [TDelphiVersions] of string = (
-    '\Software\Borland\Delphi\4.0',
-    '\Software\Borland\Delphi\5.0',
-    '\Software\Borland\Delphi\6.0',
-    '\Software\Borland\Delphi\7.0',
-    '\Software\Borland\BDS\2.0',
-    '\Software\Borland\BDS\3.0',
-    '\Software\Borland\BDS\4.0',
-    '\Software\Borland\BDS\5.0',
-    '\Software\CodeGear\BDS\6.0',
-    '\Software\CodeGear\BDS\7.0',
-    '\Software\Embarcadero\BDS\8.0',
-    '\Software\Embarcadero\BDS\9.0',
-    '\Software\Embarcadero\BDS\10.0',
-    '\Software\Embarcadero\BDS\11.0',
-    '\Software\Embarcadero\BDS\12.0',
-    '\Software\Embarcadero\BDS\14.0',
-    '\Software\Embarcadero\BDS\15.0',
-    '\Software\Embarcadero\BDS\16.0',
     '\Software\Embarcadero\BDS\17.0',
     '\Software\Embarcadero\BDS\18.0',
     '\Software\Embarcadero\BDS\19.0'
     );
+
+  TDelphiPackages: array [TDelphiVersions] of string = (
+    'DelphiBerlin\',
+    'DelphiSeattle\',
+    'DelphiTokyo\'
+  );
+
+  DPK_FILENAME = 'RFindUnit.dpk';
 
 function RegKeyExists(const RegPath: string; const RootKey: HKEY): Boolean;
 var
@@ -143,12 +102,22 @@ begin
 end;
 
 { TFrmSelDelphiVer }
-function TDelphiInstallationCheck.GetDelphiRegPathFromVersion(Version: TDelphiVersions): string;
+class function TDelphiInstallationCheck.GetDelphiDpkFromVersion(Version: TDelphiVersions): string;
+begin
+  Result := TDelphiPackages[Version] + DPK_FILENAME;
+end;
+
+class function TDelphiInstallationCheck.GetDelphiNameByVersion(Version: TDelphiVersions): string;
+begin
+  Result := TDelphiVersionsNames[Version];
+end;
+
+class function TDelphiInstallationCheck.GetDelphiRegPathFromVersion(Version: TDelphiVersions): string;
 begin
   Result := TDelphiRegPaths[Version];
 end;
 
-function TDelphiInstallationCheck.GetDelphiVersionByName(DelphiName: string): TDelphiVersions;
+class function TDelphiInstallationCheck.GetDelphiVersionByName(DelphiName: string): TDelphiVersions;
 var
   DelphiComp: TDelphiVersions;
 begin
@@ -159,7 +128,7 @@ begin
     end;
 end;
 
-procedure TDelphiInstallationCheck.LoadInstalledVersions(ImageList: TImageList; ListView: TListView);
+class procedure TDelphiInstallationCheck.LoadInstalledVersions(ImageList: TImageList; ListView: TListView);
 Var
   Item: TListItem;
   DelphiComp: TDelphiVersions;

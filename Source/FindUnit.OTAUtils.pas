@@ -3,13 +3,10 @@
 interface
 
 uses
-  Classes,
-  ToolsAPI,
-  IOUtils,
-
   FindUnit.Header,
   FindUnit.Utils,
-  System.Generics.Collections;
+  System.Generics.Collections, ToolsAPI, System.Classes, Winapi.ActiveX,
+  Winapi.ShellAPI, Winapi.ShlObj;
 
 function GetVolumeLabel(const DriveChar: string): string;
 function BrowseURL(const URL: string): boolean;
@@ -38,13 +35,7 @@ var
 implementation
 
 uses
-  ActiveX,
-  DCCStrs,
-  Registry,
-  ShellAPI,
-  ShlObj,
-  SysUtils,
-  Windows;
+  System.SysUtils, System.IOUtils, System.Win.Registry, Winapi.Windows;
 
 function SourceEditor(Module: IOTAMOdule): IOTASourceEditor;
 var
@@ -97,6 +88,12 @@ begin
   Result := TDictionary<string, TFileInfo>.Create;
 
   ModServices := BorlandIDEServices as IOTAModuleServices;
+  if ModServices = nil then
+    Exit;
+
+  if ModServices.ModuleCount = 0 then
+    Exit;
+  
   for iMod := 0 to ModServices.ModuleCount - 1 do
   begin
     Module := ModServices.Modules[iMod];
@@ -113,7 +110,7 @@ begin
 
           FileInfo.Path := FileDesc;
           if FileExists(FileDesc) then
-            FileInfo.LastAccess := IOUtils.TFile.GetLastWriteTime(FileDesc)
+            FileInfo.LastAccess := System.IOUtils.TFile.GetLastWriteTime(FileDesc)
           else
             FileInfo.LastAccess := 0;
           Result.AddOrSetValue(FileInfo.Path, FileInfo);
@@ -361,7 +358,7 @@ begin
     FindExecutable('htmpl.htm', tmp, res);
     Result.Name := ExtractFileName(res);
     Result.Path := ExtractFilePath(res);
-    SysUtils.DeleteFile(tmp + 'htmpl.htm');
+    System.SysUtils.DeleteFile(tmp + 'htmpl.htm');
   finally
     StrDispose(tmp);
     StrDispose(res);

@@ -22,10 +22,13 @@ uses
   Interf.EnvironmentController;
 
 type
+  TUnusedErrorType = (uetUnused, uetNoPasFile);
+
   TUsesUnit = record
     Line: Integer;
     Collumn: Integer;
     Name: string;
+    UnusedType: TUnusedErrorType;
   end;
 
   TUnsedUsesProcessor = class(TObject)
@@ -235,7 +238,6 @@ function TUnsedUsesProcessor.GetUnitSpecifiedOnUses: TDictionary<string, TUsesUn
 var
   XmlFile: TStringList;
   Line: string;
-  FetchType: string;
   I: Integer;
   UsesUnit: TUsesUnit;
   Column: string;
@@ -289,6 +291,11 @@ begin
     UsesUnit.Line := StrToInt(UsesLine);
     UsesUnit.Collumn := StrToInt(Column);
     UsesUnit.Name := UsesName;
+
+    if FEnvControl.PasExists(UsesUnit.Name.ToUpper + '.pas') then
+      UsesUnit.UnusedType := uetUnused
+    else
+       UsesUnit.UnusedType := uetNoPasFile;
 
     Result.AddOrSetValue(UsesUnit.Name.ToUpper, UsesUnit);
   end;

@@ -3,7 +3,8 @@ unit uInstaller;
 interface
 
 uses
-	ShellAPI, Windows, SysUtils, uDelphiInstallationCheck, Registry;
+	ShellAPI, Windows, SysUtils, uDelphiInstallationCheck, Registry,
+  System.IOUtils;
 
 type
   TRetProcedure = procedure(Desc: string) of object;
@@ -11,9 +12,11 @@ type
   TInstaller = class(TObject)
   private
     FCallBackProc: TRetProcedure;
+
+    function GetDelphiVersionFromDescription(DelphiDescription: string): TDelphiVersions;
   const
       BPL_FILENAME = 'RFindUnit.bpl';
-      DPK_FILENAME = 'RFindUnit.dpk';
+
       RSVARS_FILENAME = 'rsvars.bat';
       DCU32INT_EXE = 'dcu32int.exe';
   var
@@ -21,7 +24,9 @@ type
     FUserAppDirFindUnit, FDcu32IntPath: string;
     FReg, FRegPacks: string;
 
-    procedure LoadPaths(DelphiDesc, DelphiPath: string);
+
+    FDelphiVersion: TDelphiVersions;
+    FPackagePath: string;    procedure LoadPaths(DelphiDesc, DelphiPath: string);
 
     procedure CheckDelphiRunning;
     procedure CheckDpkExists;
@@ -81,21 +86,23 @@ end;
 procedure TInstaller.CheckDpkExists;
 begin
   FCallBackProc('Cheking if project file exist...');
-  if not FileExists(FCurPath + DPK_FILENAME) then
-    raise Exception.Create('The system was not able to find: ' + FCurPath + DPK_FILENAME);
+  if not FileExists(FPackagePath) then
+    raise Exception.Create('The system was not able to find: ' + FCurPath);
 end;
 
 procedure TInstaller.CompileProject;
 const
-  GCC_CMDLINE = '/c call "%s" & dcc32 "%s" -LE"%s" & pause';
+  GCC_CMDLINE = '/c cd "%s" & call "%s" & dcc32 "%s" -LE"%s" & pause';
 var
   GccCmd: WideString;
   I: Integer;
 begin
+
   FCallBackProc('Compiling project...');
   GccCmd := Format(GCC_CMDLINE, [
+    ExtractFilePath(FPackagePath),
     FDelphiBinPath + RSVARS_FILENAME,
-    FCurPath + DPK_FILENAME,
+    FPackagePath,
     ExcludeTrailingPathDelimiter(FOutPutDir)]);
 
   ShellExecute(0, nil, 'cmd.exe', PChar(GccCmd), nil, SW_HIDE);
@@ -111,9 +118,20 @@ begin
   end;
 end;
 
+function TInstaller.GetDelphiVersionFromDescription(DelphiDescription: string): TDelphiVersions;
+begin
+  if DelphiDescription.Contains('Seattle') then
+    Result := TDelphiVersions.DelphiSeattle10
+  else if DelphiDescription.Contains('Berlin') then
+    Result := TDelphiVersions.DelphiBerlin101
+  else if DelphiDescription.Contains('Tokyo') then
+    Result := TDelphiVersions.DelphiTokyo;
+end;
+
 constructor TInstaller.Create(DelphiDesc, DelphiPath: string);
 begin
   FDelphiDesc := DelphiDesc;
+  FDelphiVersion := GetDelphiVersionFromDescription(FDelphiDesc);
   LoadPaths(DelphiDesc, DelphiPath);
 end;
 
@@ -171,12 +189,14 @@ var
   DelphiVersion: TDelphiVersions;
 begin
   FDelphiBinPath := ExtractFilePath(DelphiPath);
-  FCurPath := ExtractFilePath(ParamStr(0));
+  FCurPath := ExtractFilePath(ParamStr(0)) + 'Installer\';
 
   FDelphiBplOutPut := GetEnvironmentVariable('public') + '\Documents\RAD Studio\RFindUnit\' + DelphiDesc + '\bpl\';
-  FDcu32IntPath := FCurPath + '\Thirdy\Dcu32Int\';
+  FDcu32IntPath := ExtractFilePath(ParamStr(0)) + '\Thirdy\Dcu32Int\';
   FUserAppDirFindUnit := GetEnvironmentVariable('appdata') + '\DelphiFindUnit\';
-  FOutPutDir := FCurPath + 'Installer\build\' + FDelphiDesc + '\';
+  FOutPutDir := FCurPath + 'build\' + TDelphiInstallationCheck.GetDelphiNameByVersion(FDelphiVersion) + '\';
+  FPackagePath := TDirectory.GetParent(ExcludeTrailingPathDelimiter(FCurPath)) + '\Packages\';
+  FPackagePath := FPackagePath + TDelphiInstallationCheck.GetDelphiDpkFromVersion(FDelphiVersion);
 
   ForceDirectories(FUserAppDirFindUnit);
   ForceDirectories(FDelphiBplOutPut);

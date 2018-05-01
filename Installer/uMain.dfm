@@ -37,7 +37,7 @@ object FrmInstall: TFrmInstall
     Height = 105
     Align = alTop
     Caption = 'Delphi Versions'
-    TabOrder = 0
+    TabOrder = 1
     object lvDelphis: TListView
       Left = 2
       Top = 15
@@ -72,7 +72,7 @@ object FrmInstall: TFrmInstall
     Height = 32
     Align = alTop
     BevelOuter = bvNone
-    TabOrder = 1
+    TabOrder = 0
     object lblVersion: TLabel
       Left = 16
       Top = 11

@@ -21,11 +21,10 @@ uses
   System.Threading,
   System.Types,
 
-  Graphics,
   Vcl.Imaging.pngimage,
   System.IOUtils,
   System.RegularExpressions,
-  FindUnit.Settings;
+  FindUnit.Settings, Vcl.Graphics;
 
 type
   TRfUnusedProcessStatus = (uspRunning, uspPending, uspComplete);
@@ -197,7 +196,6 @@ procedure TRfPaintUnsuedUses.PaintLine(const View: IOTAEditView; LineNumber: Int
 var
   I: Integer;
   FBackgroundColor: TColor;
-  x,y: Integer;
   Line: string;
   RegReturn: TMatchCollection;
   Match: TMatch;
@@ -228,6 +226,7 @@ begin
   if not GlobalSettings.EnableExperimentalFindUnusedUses then
     Exit;
 
+  {$Region 'Paint the left status'}
   if (FUsesStartLine = LineNumber) or ((FUsesStartLine = -1) and (LineNumber = 1)) then
   begin
     if ((FProcessed in [uspRunning, uspPending]) or (not Assigned(FUnusedUses))) then
@@ -241,6 +240,7 @@ begin
       Exit;
     end;
   end;
+  {$endregion}
 
   if LineNumber > FLowestLine then
   begin
@@ -255,11 +255,15 @@ begin
         Canvas.Draw(LineRect.Left, LineRect.Top, CheckedWarn)
     end;
 
-    FBackgroundColor := clWebOrange;
     Line := AnsiString(LineText);
     for I := 0 to FUnusedUses.Count -1 do
     begin
-      RegReturn := TRegEx.Matches(Line, '\b' + FUnusedUses[I].Name + '\b');
+      if FUnusedUses[I].UnusedType = uetNoPasFile then
+        FBackgroundColor := clLtGray
+      else
+        FBackgroundColor := clWebOrange;
+
+      RegReturn := TRegEx.Matches(Line, '\b' + FUnusedUses[I].Name + '[^<.>]');
       if RegReturn.Count > 0 then
         for Match in RegReturn do
           DrawColor(FUnusedUses[I].Name, clRed, FUnusedUses[I], Match);

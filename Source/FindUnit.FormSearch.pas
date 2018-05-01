@@ -3,12 +3,10 @@
 interface
 
 uses
-  Windows, Messages, SysUtils, Variants, Classes, Graphics, Controls, Forms,
-  Dialogs, StdCtrls, ExtCtrls, ToolsAPI, Menus, SyncObjs,
-  FindUnit.EnvironmentController, StrUtils, AppEvnts,
-  Buttons, ShellAPI, FindUnit.Header, FindUnit.FileEditor, Vcl.ImgList,
-  FindUnit.FormSettings, FindUnit.Settings, System.ImageList,
-  Vcl.Clipbrd;
+  Vcl.Forms, System.ImageList, Vcl.ImgList, Vcl.Controls, Vcl.ExtCtrls,
+  Vcl.AppEvnts, Vcl.StdCtrls, System.Classes, Vcl.Buttons, Winapi.Windows,
+  FindUnit.EnvironmentController, FindUnit.FormSettings, FindUnit.FileEditor,
+  FindUnit.Header;
 
 type
   TFuncBoolean = function: Boolean of object;
@@ -38,6 +36,7 @@ type
     btn1: TSpeedButton;
     btnConfig: TButton;
     ilImages: TImageList;
+    lblWarnDcuDecompi: TLabel;
     procedure FormShow(Sender: TObject);
     procedure edtSearchKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
     procedure btnAddClick(Sender: TObject);
@@ -102,7 +101,8 @@ uses
   FindUnit.FormMessage,
   FindUnit.OTAUtils,
   FindUnit.ResultsImportanceCalculator,
-  FindUnit.Utils;
+  FindUnit.Utils, FindUnit.Settings, System.SysUtils, Winapi.Messages,
+  Vcl.Dialogs, Winapi.ShellAPI, ToolsAPI, Vcl.Graphics;
 
 {$R *.dfm}
 
@@ -148,11 +148,12 @@ begin
 
     if Settings.SettingFormStartPosY > 0 then
       Self.Top := Settings.SettingFormStartPosY;
+
+    lblWarnDcuDecompi.Visible := not Settings.RanOnceDcuDecompiler;
   finally
     Settings.Free;
   end;
 end;
-
 
 procedure TfrmFindUnit.ShowTextOnScreen(Text: string);
 var
@@ -225,6 +226,7 @@ const
 var
   ForMessage: string;
   MesDlg: TForm;
+  Settings: TSettings;
 begin
   Result := True;
   if Dcu32IntExecutableExists then
@@ -243,6 +245,7 @@ begin
 
     if MesDlg.ModalResult <> mrYes then
       Exit;
+
   finally
     MesDlg.Free;
   end;
@@ -256,12 +259,22 @@ const
    + ' and process it to make it available for search.'
    + ' This process will slowdown your computer and can take some minutes (~2), '
    + ' are you sure that you want to run it now ?';
+var
+  Settings: TSettings;
 begin
   if MessageDlg(MESGEM, mtWarning, [mbCancel, mbYes], 0) <> mrYes then
     Exit;
 
   btnProcessDCUs.Enabled := False;
   FEnvControl.ProcessDCUFiles;
+
+  Settings := TSettings.Create;
+  try
+    Settings.RanOnceDcuDecompiler := True;
+  finally
+    Settings.Free;
+  end;
+  ConfigureForm;
 end;
 
 procedure TfrmFindUnit.btnRefreshLibraryPathClick(Sender: TObject);
@@ -487,7 +500,7 @@ end;
 procedure TfrmFindUnit.lstResultClick(Sender: TObject);
 begin
   {$IFDEF DEBUG}
-  Clipboard.AsText := lstResult.Items.Text;
+//  Clipboard.AsText := lstResult.Items.Text;
   {$ENDIF}
 end;
 

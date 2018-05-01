@@ -3,14 +3,14 @@ unit FindUnit.PasParser;
 interface
 
 uses
-  Classes,
-  SysUtils,
+  System.Classes,
+  System.SysUtils,
 
   DelphiAST.Classes,
 
   FindUnit.Header,
 
-  Generics.Collections,
+  System.Generics.Collections,
 
   SimpleParser.Lexer.Types;
 
@@ -100,10 +100,9 @@ implementation
 
 uses
   DelphiAST,
-  IOUtils,
   Log4PAscal,
 
-  DelphiAST.Consts;
+  DelphiAST.Consts, System.IOUtils;
 
 { TFindUnitItem }
 
@@ -210,7 +209,16 @@ begin
             else if TypeType.Equals('function') then
               GetFunctionReferenceDescription(TypeNode)
             else if  TypeType.Equals('subrange') then
-              GetSubRangeDesc(TypeNode);
+              GetSubRangeDesc(TypeNode)
+            else
+            begin
+              try
+                GetReference(TypeNode);
+              except
+                on e: exception do
+                  Logger.Error('TFindUnitParser.GetClasses: %s - %s | %s', [e.Message, FFilePath, TypeNode.ToString]);
+              end;
+            end;
           end;
         end;
       except
@@ -349,7 +357,7 @@ end;
 procedure TPasFileParser.GetFileLastModification;
 begin
   try
-    FResultItem.FLastModification := IOUtils.TFile.GetLastWriteTime(FFilePath);
+    FResultItem.FLastModification := System.IOUtils.TFile.GetLastWriteTime(FFilePath);
   except
   end;
 end;

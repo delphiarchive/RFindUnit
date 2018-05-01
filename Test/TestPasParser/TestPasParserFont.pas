@@ -18,6 +18,15 @@ type
   TestSet = set of TestEnum;
   TestSetNew = set of 1..10;
 
+  TVATID = type string;
+  TTESTNotIn = type string;
+
+  TVATIDHelper = record helper for TVATID
+  end;
+
+  TExtraInfo = class helper for TObject
+  end;
+
   IOtherInterface = interface
     ['{9B20D6D4-0E6C-44B6-A8D6-CF1DC3ACFE55}']
   end;

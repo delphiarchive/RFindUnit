@@ -5,7 +5,7 @@ interface
 uses
   Windows, SysUtils, Classes, Controls, Forms, Dialogs, Registry,
   StdCtrls, ComCtrls, uDelphiInstallationCheck, ExtCtrls,
-  uInstaller, ImgList;
+  uInstaller, ImgList, System.ImageList;
 
 type
   TFrmInstall = class(TForm)
